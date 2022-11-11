@@ -13,10 +13,11 @@ class cropMachine():
     def __init__(self):
         self.rasterPath = ''
         self.shapePath = ''
-        self.pointRatio = 10
+        self.pointRatio = 25
         self.surveyRowCol = []
         self.selectedBand = ''
         self.matchXYList = []
+        self.templateBandList = []
         # self.pointData = [];
         
     
@@ -33,11 +34,15 @@ class cropMachine():
         
     def openRasterW(self,raster):
         self.rasterF = raster
+        
+    def returnTiff(self):
+        rasterRead = rasterio.open(self.rasterPath2)
+        return rasterRead
     
     def openPoint(self,pointPath):
         pointDat= fiona.open(pointPath)
         
-        print("Point data => {}".format(pointDat.crs))
+        # print("Point data => {}".format(pointDat.crs))
         
         self.pointData = pointDat
         
@@ -48,25 +53,27 @@ class cropMachine():
         # print(self.pointData.crs)
         for point in self.pointData:
             if point['geometry']!= None:
+                # print(point['geometry']['coordinates'])
                 ax.scatter(point['geometry']['coordinates'][0],point['geometry']['coordinates'][1], c='orangered', s=100)
         show(rasterRead,ax=ax)
         plt.show()
     
     # ver puntos y las imagenes guias 
     def viewRasterPoint(self):
-        print(self.rasterPath2)
+        # print(self.rasterPath2)
         rasterRead = rasterio.open(self.rasterPath2)
         greenBand = rasterRead.read(2)
-        print(greenBand)
+        # print(greenBand)
         #region recorrer puntos
         for index,values in enumerate(self.pointData):
             if values['geometry']!= None:
                 pt = values['geometry']['coordinates']
                 x = pt[0]
                 y = pt[1]
-                
+                # tomamos el px del raster
                 row,col = rasterRead.index(x,y)
-                self.surveyRowCol.append([x,y])
+                # lo pasamos
+                self.surveyRowCol.append([row,col])
         #endregion
         
         fig,ax = plt.subplots(1,len(self.surveyRowCol),figsize=(20,5))
@@ -75,11 +82,14 @@ class cropMachine():
         for index,item in enumerate(self.surveyRowCol):
             
             # tomamos la posicion en px
+            # print(item)
             row = item[0]
             col = item[1]
+            # print ("x => {};y => {}".format(row,col))
             # print(greenBand)
             # print(row,col)
             # imprimimos el aja la imaagen con la banda
+            # show(greenBand)
             ax[index].imshow(greenBand)
             # y marcamos
             ax[index].plot(col,row,color="red",linestyle="dashed",marker="+",markerfacecolor="blue",markersize=8)
@@ -93,6 +103,44 @@ class cropMachine():
             ax[index].set_title(index+1)
             # y asi mostramos la imagenes que buscaremos
             # if index == 5 : break
+    
+    # obtener mas templates de referencias
+    def getMoreTemplates(self):
+        self.templateBandList = []
+        rasterRead = rasterio.open(self.rasterPath2)
+        greenBand = rasterRead.read(2)
         
+        for rowCol in self.surveyRowCol:
+            imageList = []
+            # index pixeles
+            row = rowCol[0]
+            col = rowCol[1]
+            # recortamos la imagen
+            imageList.append(greenBand[row-self.pointRatio:row+self.pointRatio,col-self.pointRatio:col+self.pointRatio])
+            # ahora colocamos mas grande imagen para que no se dañe
+            templateRotate = greenBand[row - 2*self.pointRatio:row + 2*self.pointRatio,col - 2*self.pointRatio:col + 2*self.pointRatio ]
+            # ahora creamos un rango de rotacion 
+            rotationList = [i * 30 for i in range(1,4)]
+            
+            for rotation in rotationList:
+                # tomamos la imagen
+                rotatedRaw = Image.fromarray(templateRotate)
+                # le metemos una rotacion
+                rotatedImage = rotatedRaw.rotate(rotation)
+                # pasamos el array y le ponemos el array normal
+                imageList.append(np.asarray(rotatedImage)[self.pointRatio:-self.pointRatio,self.pointRatio:-self.pointRatio])
+            
+            # mostramos 
+            # creamos una figura 12x12
+            fig,ax = plt.subplots(1,len(imageList),figsize=(12,12))
+            # lo reocrremos
+            for index,item in enumerate(imageList):
+                
+                ax[index].imshow(imageList[index])
+                ax[index].axis('off')
+                ax[index].set_title(index+1)
+            
+            self.templateBandList += imageList
+                
         
         
