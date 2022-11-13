@@ -51,6 +51,7 @@ class cropMachine():
         rasterRead = rasterio.open(self.rasterPath2)
         # print(rasterRead)
         # print(self.pointData.crs)
+        ax.axis('off')
         for point in self.pointData:
             if point['geometry']!= None:
                 # print(point['geometry']['coordinates'])
@@ -63,6 +64,7 @@ class cropMachine():
         # print(self.rasterPath2)
         rasterRead = rasterio.open(self.rasterPath2)
         greenBand = rasterRead.read(2)
+        self.greenBand2 = greenBand
         # print(greenBand)
         #region recorrer puntos
         for index,values in enumerate(self.pointData):
@@ -108,7 +110,7 @@ class cropMachine():
     def getMoreTemplates(self):
         self.templateBandList = []
         rasterRead = rasterio.open(self.rasterPath2)
-        greenBand = rasterRead.read(2)
+        greenBand = rasterRead.read(1)
         
         for rowCol in self.surveyRowCol:
             imageList = []
@@ -142,5 +144,39 @@ class cropMachine():
             
             self.templateBandList += imageList
                 
+    def learnMethod1(self):
+        rasterRead = rasterio.open(self.rasterPath2)
+        greenBand = rasterRead.read(2)
+        self.matchXYList = []
+        # recorremos todas las coicidencias
+        for index, templateBand in enumerate(self.templateBandList):
+            # cada vez que van 10 aprendizaje lo muestra 
+            if index%10 == 0:
+                print("Hemos revisando {} figuras".format(index))
+            
+            # aplicamos el match template para que aprenda
+            matchTemplate = match_template(greenBand,templateBand,pad_input=True)
+            # filtramos el resultado a mayor de 0.996 
+            matchTemplateFilter = np.where(matchTemplate>np.quantile(matchTemplate,0.9996))
+            # recorro el xy y y lo meto en un array
+            for item in zip(matchTemplateFilter[0],matchTemplateFilter[1]):
+                x,y = rasterRead.xy(item[0],item[1])
+                # lo guardamos
+                self.matchXYList.append([x,y])
         
+        # filtramos
+        brc = Birch(branching_factor=10000,n_clusters=None,threshold=2e-5,compute_labels=True)
+        brc.fit(self.matchXYList)
+        # obtenemos los puntos centrales que encontramoes
+        self.puntosFind = brc.subcluster_centers_
         
+        # lo visualizamos
+        fig = plt.figure(figsize=(10,10))
+        ax = fig.add_subplot(111)
+        ax.axis('off')
+        ax.scatter(self.puntosFind[:,[0]],self.puntosFind[:,[1]],marker='o',color="orangered",s=100)
+        show(rasterRead,ax=ax)
+        plt.show()
+        
+    def exportPoint(self,nameArchive):
+        np.savetxt("out/"+nameArchive,self.puntosFind,delimiter=",")
